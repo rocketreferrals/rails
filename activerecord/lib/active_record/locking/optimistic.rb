@@ -90,21 +90,35 @@ module ActiveRecord
             relation = self.class.unscoped
 
             affected_rows = relation.where(
-              self.class.primary_key => id,
-              lock_col => previous_lock_value,
+                self.class.primary_key => id,
+                lock_col => previous_lock_value,
             ).update_all(
-              attributes_for_update(attribute_names).map do |name|
-                [name, _read_attribute(name)]
-              end.to_h
+                attributes_for_update(attribute_names).map do |name|
+                  [name, _read_attribute(name)]
+                end.to_h
             )
 
             unless affected_rows == 1
-              raise ActiveRecord::StaleObjectError.new(self, "update")
+              if self.class.respond_to?(:ignore_lock_exception) and self.class.ignore_lock_exception
+                RocketException.report({e: ActiveRecord::StaleObjectError.new(self, "update"),
+                                        params: {
+                                            system: 'ActiveRecord::Optimistic',
+                                            step: '_update_record',
+                                            level: 'critical',
+                                            data: {
+                                                class: self.class.name,
+                                                id: id,
+                                                caller: caller
+                                            } }})
+                return super
+              else
+                raise ActiveRecord::StaleObjectError.new(self, "rr_update")
+              end
             end
 
             affected_rows
 
-          # If something went wrong, revert the version.
+              # If something went wrong, revert the version.
           rescue Exception
             send(lock_col + '=', previous_lock_value)
             raise
