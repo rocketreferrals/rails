@@ -79,40 +79,52 @@ module ActiveRecord
 
         def _update_record(attribute_names = self.attribute_names)
           return super unless locking_enabled?
-          return 0 if attribute_names.empty?
+    return 0 if attribute_names.empty?
 
-          begin
-            lock_col = self.class.locking_column
+    lock_col = self.class.locking_column
+    previous_lock_value = send(lock_col).to_i
+    increment_lock
 
-            previous_lock_value = read_attribute_before_type_cast(lock_col)
+    attribute_names += [lock_col]
+    attribute_names.uniq!
 
-            increment_lock
+    begin
+      relation = self.class.unscoped
 
-            attribute_names.push(lock_col)
+      affected_rows = relation.where(
+          self.class.primary_key => id,
+          lock_col => previous_lock_value,
+      ).update_all(
+          attributes_for_update(attribute_names).map do |name|
+            [name, _read_attribute(name)]
+          end.to_h
+      )
 
-            relation = self.class.unscoped
+      unless affected_rows == 1
+        if self.class.respond_to?(:ignore_lock_exception) and self.class.ignore_lock_exception
+          RocketException.report({e: ActiveRecord::StaleObjectError.new(self, "update"),
+                                  params: {
+                                      system: 'ActiveRecord::Optimistic',
+                                      step: '_update_record',
+                                      level: 'critical',
+                                      data: {
+                                          class: self.class.name,
+                                          id: id,
+                                          caller: caller
+                                      } }})
+          return super
+        else
+          raise ActiveRecord::StaleObjectError.new(self, "rr_update")
+        end
+      end
 
-            affected_rows = relation.where(
-              self.class.primary_key => id,
-              lock_col => previous_lock_value
-            ).update_all(
-              attributes_for_update(attribute_names).map do |name|
-                [name, _read_attribute(name)]
-              end.to_h
-            )
+      affected_rows
 
-            unless affected_rows == 1
-              raise ActiveRecord::StaleObjectError.new(self, "update")
-            end
-
-            affected_rows
-
-          # If something went wrong, revert the locking_column value.
-          rescue Exception
-            send("#{lock_col}=", previous_lock_value.to_i)
-
-            raise
-          end
+        # If something went wrong, revert the version.
+    rescue Exception
+      send(lock_col + '=', previous_lock_value)
+      raise
+    end
         end
 
         def destroy_row
