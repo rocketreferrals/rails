@@ -139,8 +139,10 @@ module ActiveRecord
           relation = super
 
           if locking_enabled?
-            locking_column = self.class.locking_column
-            relation = relation.where(locking_column => _read_attribute(locking_column))
+            unless self.class.respond_to?(:ignore_lock_exception) and self.class.ignore_lock_exception
+              locking_column = self.class.locking_column
+              relation = relation.where(locking_column => _read_attribute(locking_column))
+            end
           end
 
           relation
