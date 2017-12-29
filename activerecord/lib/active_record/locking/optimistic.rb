@@ -107,7 +107,7 @@ module ActiveRecord
                 if self.is_a? Contact
                   k = "#{self.class.name}_#{self.id}_#{previous_lock_value}"
                   $redis9.hset k, 'stale_object', caller.join("\n")
-                  $redis9.expire k, 60*60*8
+                  $redis9.expire k, 60*60*24*7
                 end
                 RocketException.report({e: ActiveRecord::StaleObjectError.new(self, "update"),
                                         params: {
