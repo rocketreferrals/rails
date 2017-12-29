@@ -97,12 +97,13 @@ module ActiveRecord
                   [name, _read_attribute(name)]
                 end.to_h
             )
-            if self.is_a? Contact
-              k = "#{self.class.name}_#{self.id}_#{previous_lock_value}"
-              $redis9.hset k, 'valid_update', caller.join("\n")
-              $redis9.expire k, 5
-            end
-            unless affected_rows == 1
+            if affected_rows == 1
+              if self.is_a? Contact
+                k = "#{self.class.name}_#{self.id}_#{previous_lock_value}"
+                $redis9.hset k, 'valid_update', caller.join("\n")
+                $redis9.expire k, 5
+              end
+            else
               if self.class.respond_to?(:ignore_lock_exception) and self.class.ignore_lock_exception
                 if self.is_a? Contact
                   k = "#{self.class.name}_#{self.id}_#{previous_lock_value}"
