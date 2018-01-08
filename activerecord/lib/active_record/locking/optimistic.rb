@@ -98,18 +98,16 @@ module ActiveRecord
                 end.to_h
             )
             if affected_rows == 1
-              if self.is_a? Contact
+              if self.class.respond_to?(:ignore_lock_exception) and self.class.ignore_lock_exception
                 k = "#{self.class.name}_#{self.id}_#{previous_lock_value}"
                 $redis9.hset k, 'valid_update', caller.join("\n")
                 $redis9.expire k, 5
               end
             else
               if self.class.respond_to?(:ignore_lock_exception) and self.class.ignore_lock_exception
-                if self.is_a? Contact
-                  k = "#{self.class.name}_#{self.id}_#{previous_lock_value}"
-                  $redis9.hset k, 'stale_object', caller.join("\n")
-                  $redis9.expire k, 60*60*24*7
-                end
+                k = "#{self.class.name}_#{self.id}_#{previous_lock_value}"
+                $redis9.hset k, 'stale_object', caller.join("\n")
+                $redis9.expire k, 60*60*24*7
                 RocketException.report({e: ActiveRecord::StaleObjectError.new(self, "update"),
                                         params: {
                                             system: 'ActiveRecord::Optimistic',
